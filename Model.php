@@ -1,4 +1,5 @@
 <?php
+namespace Tofu;
 class Model
 {
     private $_objMogoClient;
@@ -90,30 +91,72 @@ class Model
         return $objModel;
     }
 
+
+    /**
+     *  
+     ************数据模型对象方法分割线*****************
+     *  
+     **/
+
+    /**
+     * save 
+     * 保存数据模型对象
+     * @param array $arrData 
+     * @access public
+     * @return void
+     */
     public function save($arrData = array())
     {
+        //如果输入的数据为空，表示对象已载入完成
         if (empty($arrData)) {
             $this->_checkDataHasBeenLoaded(true);
         } else {
+            //如果输入的数据不为空，表示对象没有载入
             $this->_checkDataHasBeenLoaded(false);
             $this->_setData($arrData);
         }
+        //保存到数据库
         self::$_objCollection->save($this->_arrData);
     }
 
+    /**
+     * delete 
+     * 从数据库中删除该数据模型
+     * @access public
+     * @return void
+     */
     public function delete()
     {
+        //确认已经载入
         $this->_checkDataHasBeenLoaded(true);
+        //将状态设置成删除状态
         $this->_arrData['status'] = self::DELETE;
+        //保存到数据库
         $this->save();
     }
 
+    /**
+     * __get 
+     * 从载入的数据模型中获取成员
+     * @param mixed $strArgumentName 
+     * @access public
+     * @return void
+     */
     public function __get($strArgumentName)
     {
-        //check
+        //确认已经载入
+        $this->_checkDataHasBeenLoaded(true);
         return $this->_arrData[$strArgumentName];
     }
 
+    /**
+     * __set 
+     * 设置数据模型中的成员
+     * @param mixed $strArgumentName 
+     * @param mixed $strArgument 
+     * @access public
+     * @return void
+     */
     public function __set($strArgumentName, $strArgument)
     {
         //check
