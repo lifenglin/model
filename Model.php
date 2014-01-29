@@ -2,11 +2,17 @@
 namespace Tofu;
 class Model
 {
-    private $_objMogoClient;
+    private $_objMongoClient;
+
+    private $_objMongoDb;
 
     private $_objCollection;
 
     private $_bolDataHasBeenLoaded = false;
+
+    private $_strDbName = '';
+
+    private $_strCollection = '';
 
     private $_arrData = array();
 
@@ -14,17 +20,37 @@ class Model
 
     const NOT_DELETE = 'N';
 
-    public function __construct($strCollection, $strServer = null, $arrOptions = null)
+    const STATUS = 'status';
+
+    public function __construct($strDbName, $strCollection, $strServer = '', $arrOptions = array())
     {
+        if (empty($strDbName)) {
+            throw new \InvalidArgumentException("__construct expects parameter 1 not to be empty");
+        }
+        if (empty($strCollection)) {
+            throw new \InvalidArgumentException("__construct expects parameter 2 not to be empty");
+        }
+        $this->_strDbName = $strDbName;
+        $this->_strCollection = $strCollection;
+
         //http://cn2.php.net/manual/zh/mongoclient.construct.php
-        $this->_objMogoClient = new MongoClient($strServer, $arrOptions);
-        $this->_objCollection = $this->_objMogoClient->$strCollection;
+        $this->_objMongoClient = new \MongoClient($strServer, $arrOptions);
+        $this->_objMongoDb = $this->_objMongoClient->selectDB($strDbName);
+        $this->_objCollection = $this->_objMongoDb->$strCollection;
     }
 
     public function __toString()
     {
         $this->_checkDataHasBeenLoaded(true);
         return json_encode($this->_arrData);
+    }
+
+    public function isEmpty()
+    {
+        if (empty($this->_arrData)) {
+            return true;
+        }
+        return false;
     }
 
     /*
@@ -67,32 +93,34 @@ class Model
             throw new \InvalidArgumentException("findById() expects parameter 1 to be string or MongId");
         }
         try {
-            $objMongoId = new MongoId($mixMongodbId);
+            $objMongoId = new \MongoId($mixMongodbId);
         } catch (MongoException $e) {
             throw new \InvalidArgumentException("findById() expects parameter 1 to be string or MongId");
         }
-        $arrData = $this->_objCollection->findOne(array('_id' => $objMongoId));
-        $objModel = new self();
+        $arrData = $this->_objCollection->findOne(array('_id' => $objMongoId, self::STATUS => self::NOT_DELETE));
+        $objModel = new self($this->_strDbName, $this->_strCollection);
         $objModel->_setData($arrData);
         return $objModel;
     }
 
-    static public function find($arrQuery = null, $arrFields = null)
+    public function find($arrQuery = array(), $arrFields = array())
     {
+        $arrQuery = array_merge($arrQuery, array(self::STATUS => self::NOT_DELETE));
         $arrData = $this->_objCollection->find($arrQuery, $arrFields);
         $arrModel = array();
         foreach ($arrData as $arrItem) {
-            $objModel = new self();
-            $objModel->_setData($arrData);
+            $objModel = new self($this->_strDbName, $this->_strCollection);
+            $objModel->_setData($arrItem);
             $arrModel[] = $objModel;
         }
         return $arrModel;
     }
 
-    static public function findFirst($arrQuery = null, $arrFields = null)
+    public function findFirst($arrQuery = array(), $arrFields = array())
     {
+        $arrQuery = array_merge($arrQuery, array(self::STATUS => self::NOT_DELETE));
         $arrData = $this->_objCollection->findOne($arrQuery, $arrFields);
-        $objModel = new self();
+        $objModel = new self($this->_strDbName, $this->_strCollection);
         $objModel->_setData($arrData);
         return $objModel;
     }
@@ -115,6 +143,9 @@ class Model
             $this->_checkDataHasBeenLoaded(false);
             $this->_setData($arrData);
         }
+        if (isset($this->_arrData[self::STATUS])) {
+            $this->_arrData[self::STATUS] = self::NOT_DELETE;
+        }
         //保存到数据库
         $this->_objCollection->save($this->_arrData);
     }
@@ -125,14 +156,28 @@ class Model
      * @access public
      * @return void
      */
-    public function delete()
+    public function delete($mixMongodbId = '')
     {
-        //确认已经载入
-        $this->_checkDataHasBeenLoaded(true);
+        if (empty($mixMongodbId)) {
+            $mixMongodbId = $this->_arrData['_id'];
+        }
+        if (!is_string($mixMongodbId) && !is_a($mixMongodbId, 'MongoId')) {
+            throw new \InvalidArgumentException("delete() expects parameter 1 to be string or MongId");
+        }
+        try {
+            if (is_string($mixMongodbId)) {
+                $objMongoId = new \MongoId($mixMongodbId);
+            }
+        } catch (MongoException $e) {
+            throw new \InvalidArgumentException("delete() expects parameter 1 to be string or MongId");
+        }
+        $this->_id = $mixMongodbId;
         //将状态设置成删除状态
-        $this->_arrData['status'] = self::DELETE;
+        $this->_arrData[self::STATUS] = self::DELETE;
         //保存到数据库
         $this->save();
+        unset($this->_arrData);
+        $this->_bolDataHasBeenLoaded = false;
     }
 
     /**
