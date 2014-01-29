@@ -14,14 +14,17 @@ class Model
 
     const NOT_DELETE = 'N';
 
-    //http://cn2.php.net/manual/zh/mongoclient.construct.php
-    public function init($strServer = null, $arrOptions = null)
+    public function __construct($strCollection, $strServer = null, $arrOptions = null)
     {
-        /*
-            $arrOptions = 
-            array_merge(array('connect' => false), (array) $arrOptions);
-         */
+        //http://cn2.php.net/manual/zh/mongoclient.construct.php
         $this->_objMogoClient = new MongoClient($strServer, $arrOptions);
+        $this->_objCollection = $this->_objMogoClient->$strCollection;
+    }
+
+    public function __toString()
+    {
+        $this->_checkDataHasBeenLoaded(true);
+        return json_encode($this->_arrData);
     }
 
     /*
@@ -43,7 +46,7 @@ class Model
         if (!empty($arrData)) {
             $this->_arrData = $arrData;
         } else {
-            //notice
+            user_error('parameter is empty');
         }
         $this->_bolDataHasBeenLoaded = true;
     }
@@ -51,21 +54,24 @@ class Model
     private function _checkDataHasBeenLoaded($bolNeedLoaded = true)
     {
         if ($this->_bolDataHasBeenLoaded !== $bolNeedLoaded) {
-            //throw
+            throw new \RuntimeException('check data has been loaded fail');
         }
     }
 
-    static public function findById($mixMongodbId)
+    public function findById($mixMongodbId)
     {
         if (empty($mixMongodbId)) {
-            //warning
-            return array();
+            throw new \InvalidArgumentException("findById() expects parameter 1 not to be empty");
         }
         if (!is_string($mixMongodbId) && !is_a($mixMongodbId, 'MongoId')) {
-            //waring
-            return array();
+            throw new \InvalidArgumentException("findById() expects parameter 1 to be string or MongId");
         }
-        $arrData = self::$_objCollection->findOne(array('_id' => new MongoId($mixMongodbId)));
+        try {
+            $objMongoId = new MongoId($mixMongodbId);
+        } catch (MongoException $e) {
+            throw new \InvalidArgumentException("findById() expects parameter 1 to be string or MongId");
+        }
+        $arrData = $this->_objCollection->findOne(array('_id' => $objMongoId));
         $objModel = new self();
         $objModel->_setData($arrData);
         return $objModel;
@@ -73,7 +79,7 @@ class Model
 
     static public function find($arrQuery = null, $arrFields = null)
     {
-        $arrData = self::$_objCollection->find($arrQuery, $arrFields);
+        $arrData = $this->_objCollection->find($arrQuery, $arrFields);
         $arrModel = array();
         foreach ($arrData as $arrItem) {
             $objModel = new self();
@@ -85,18 +91,12 @@ class Model
 
     static public function findFirst($arrQuery = null, $arrFields = null)
     {
-        $arrData = self::$_objCollection->findOne($arrQuery, $arrFields);
+        $arrData = $this->_objCollection->findOne($arrQuery, $arrFields);
         $objModel = new self();
         $objModel->_setData($arrData);
         return $objModel;
     }
 
-
-    /**
-     *  
-     ************数据模型对象方法分割线*****************
-     *  
-     **/
 
     /**
      * save 
@@ -116,7 +116,7 @@ class Model
             $this->_setData($arrData);
         }
         //保存到数据库
-        self::$_objCollection->save($this->_arrData);
+        $this->_objCollection->save($this->_arrData);
     }
 
     /**
@@ -163,5 +163,12 @@ class Model
         $this->_arrData[$strArgumentName] = $strArgument;
         $this->_bolDataHasBeenLoaded = true;
         return true;
+    }
+
+    public function toArray()
+    {
+        //确认已经载入
+        $this->_checkDataHasBeenLoaded(true);
+        return $this->_arrData;
     }
 }
